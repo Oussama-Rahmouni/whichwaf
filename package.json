@@ -1,0 +1,33 @@
+{
+  "name": "whichwaf",
+  "version": "0.1.0",
+  "description": "Which anti-bot/WAF is protecting this site — and which layer blocks you. Evidence-based detection for Cloudflare, DataDome, PerimeterX, Akamai, Kasada, Imperva, AWS WAF, Turnstile, reCAPTCHA, hCaptcha, funcaptcha.",
+  "keywords": ["waf", "anti-bot", "cloudflare", "datadome", "akamai", "perimeterx", "kasada", "web-scraping", "detection", "security"],
+  "license": "MIT",
+  "author": "Oussama Rahmouni",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "whichwaf": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsc -p tsconfig.test.json && node --test dist-test/test/",
+    "whichwaf": "npm run build --silent && node dist/cli.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}
