@@ -60,6 +60,46 @@ const LAYER_BY_KIND: Record<ChallengeKind, { layer: Layer; hint: string }> = {
     layer: 'session',
     hint: 'AWS WAF challenge action. The aws-waf-token cookie IS the clearance — obtain it once, reuse it.',
   },
+  distil: {
+    layer: 'browser',
+    hint: 'Distil sensor JS + device fingerprint (now Imperva ABP). Same playbook as Incapsula: solve once, ride the session cookies.',
+  },
+  queueit: {
+    layer: 'session',
+    hint: 'Virtual waiting room, not a ban. Run the queue JS once (or wait) for the QueueITAccepted token, then continue.',
+  },
+  sucuri: {
+    layer: 'identity',
+    hint: 'Cloud proxy. Blocks are IP/ASN reputation — change egress IP before touching anything else.',
+  },
+  wordfence: {
+    layer: 'application',
+    hint: 'WordPress plugin WAF. 503 = rate limit: slow down and spread requests. 403 = a rule matched the request itself.',
+  },
+  f5bigip: {
+    layer: 'application',
+    hint: 'BIG-IP ASM rule matched. The support ID on the rejection page identifies the exact rule that fired.',
+  },
+  ddosguard: {
+    layer: 'browser',
+    hint: 'JS check, Cloudflare-UAM style. A solved __ddg* cookie rides the session.',
+  },
+  modsecurity: {
+    layer: 'application',
+    hint: 'OWASP CRS rule matched your request. Inspect headers/payload for the offending pattern — 406 is almost always the request, not you.',
+  },
+  radware: {
+    layer: 'browser',
+    hint: 'reese84 sensor cookie needs the JS to run; behavioral scoring on top.',
+  },
+  reblaze: {
+    layer: 'session',
+    hint: 'Session-scoped JS challenge; rbzid/rbzsessionid cookies carry the clearance.',
+  },
+  geetest: {
+    layer: 'application',
+    hint: 'GeeTest puzzle on the action. Token per request; v4 scores passively in the background.',
+  },
   turnstile: {
     layer: 'browser',
     hint: 'Turnstile token required for this action. Non-interactive but scored; token has a short TTL.',
