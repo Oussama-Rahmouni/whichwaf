@@ -59,6 +59,9 @@ npm run whichwaf -- https://example.com
 ```bash
 whichwaf <url>              # probe a URL, print the verdict
 whichwaf <url> --json       # machine-readable output
+whichwaf <url> --diff       # probe as plain client AND as browser, compare verdicts
+whichwaf --file urls.txt    # probe a list of URLs, aggregate summary
+whichwaf --file urls.txt --report out.md   # + markdown report
 whichwaf --stdin            # classify a captured raw HTTP response from stdin
 whichwaf --list             # list every vendor signature
 ```
@@ -71,10 +74,54 @@ CI and shell scripts directly.
 curl -sD - https://target.com -o /dev/null | whichwaf --stdin
 ```
 
+## Differential probing
+
+`--diff` sends the same request twice — once with the honest `whichwaf` UA, once as
+current Chrome — and diffs the verdicts:
+
+```
+$ whichwaf https://claude.ai --diff
+
+honest  (whichwaf UA):  BLOCKED — cloudflare (high) · status 403 · 82ms
+browser (chrome UA):    BLOCKED — cloudflare (high) · status 200 · 128ms
+
+diff: Both profiles blocked by cloudflare — the check fires regardless of client
+identity. Fingerprint work alone won't help; the browser layer challenge itself
+must be solved.
+```
+
+If the plain client is blocked but the browser profile passes, discrimination is at
+identity/transport (UA, TLS, header order) — that's where the fix goes. If both are
+blocked identically, don't waste time on fingerprints; solve the challenge.
+
+## Fleet scan
+
+Point it at a list and get the aggregate picture — who protects what, and at which
+layer blocks actually happen:
+
+```bash
+whichwaf --file top-targets.txt --report report.md
+```
+
+```
+scanned 5 urls in 0s
+blocked: 2 · present: 0 · clean: 3 · errors: 0
+
+vendors:
+  cloudflare       4
+  fastly           1
+
+block layers:
+  browser          2
+```
+
+The markdown report is a ready-to-publish dataset: summary, vendor distribution,
+layer distribution, and a per-URL details table.
+
 ## Library
 
 ```ts
-import { analyze, detectChallenge, fingerprintVendors, probe } from 'whichwaf';
+import { analyze, detectChallenge, fingerprintVendors, probe, diffProbe, scanUrls } from 'whichwaf';
 
 const result = await probe('https://example.com');
 const verdict = analyze(result);
@@ -85,6 +132,12 @@ verdict.challenge.evidence; // the matched marker, for your logs
 verdict.vendors;            // every vendor in the stack, block or no block
 verdict.layer;              // 'identity' | 'transport' | 'session' | 'browser' | 'behavior' | 'application'
 verdict.hint;               // what to fix first
+
+const diff = await diffProbe('https://example.com');
+diff.summary;               // where the stack discriminates: identity/transport vs everyone
+
+const fleet = await scanUrls(['https://a.com', 'https://b.com']);
+fleet.stats.byVendor;       // { cloudflare: 12, datadome: 3, ... }
 ```
 
 `detectChallenge({ status, headers, body })` and `fingerprintVendors({ headers, body })`
@@ -92,17 +145,23 @@ are pure functions — no network — if you already have the response.
 
 ## Coverage
 
-| Vendor | Headers | Cookies | Body markers | Challenge classification |
-|---|---|---|---|---|
-| Cloudflare (incl. managed challenge) | ✓ | ✓ | ✓ | ✓ |
-| DataDome | ✓ | ✓ | ✓ | ✓ (block vs presence) |
-| PerimeterX / HUMAN | ✓ | ✓ | ✓ | ✓ |
-| Akamai Bot Manager | ✓ | ✓ (`_abck`, `ak_bmsc`) | ✓ | ✓ |
-| Kasada | ✓ (`x-kpsdk-*`) | — | ✓ | ✓ |
-| Imperva / Incapsula | ✓ | ✓ | ✓ | ✓ |
-| AWS WAF | ✓ (`x-amzn-waf-*`) | ✓ | — | ✓ |
-| Turnstile / reCAPTCHA / hCaptcha / funcaptcha (Arkose) | — | — | ✓ | ✓ |
-| Fastly / CloudFront / Vercel (CDN layer) | ✓ | — | — | presence only |
+31 signatures, each with evidence-level output (`whichwaf --list` shows all).
+
+**Challenge-classified** (block vs presence, with layer mapping):
+Cloudflare · DataDome · PerimeterX/HUMAN · Akamai · Kasada · Imperva/Incapsula ·
+AWS WAF · Distil (Imperva ABP) · Queue-it · Sucuri · Wordfence · F5 BIG-IP ASM ·
+DDoS-Guard · ModSecurity/OWASP CRS · Radware Bot Manager · Reblaze
+
+**CAPTCHA platforms:**
+Turnstile · reCAPTCHA · hCaptcha · funcaptcha (Arkose) · GeeTest
+
+**CDN / edge fingerprinting** (presence):
+Fastly · CloudFront · Vercel · BunnyCDN · Netlify · Alibaba (Tengine) ·
+Azure Front Door · Google front end / Cloud Armor · Signal Sciences (Fastly Next-Gen WAF) · SafeLine
+
+The list deliberately favors vendors a scraper actually meets over the full
+enterprise-appliance zoo — every signature ships with a "what this means for a
+scraper" note.
 
 ## What it is not
 
