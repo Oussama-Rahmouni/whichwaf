@@ -38,10 +38,20 @@ Two design rules set it apart:
 
 ## Install
 
+Not on npm yet — install from source:
+
 ```bash
-npm install -g whichwaf
-# or run without installing
-npx whichwaf https://example.com
+git clone https://github.com/Oussama-Rahmouni/whichwaf.git
+cd whichwaf
+npm install
+npm run build
+npm link   # puts `whichwaf` on your PATH
+```
+
+Or run without linking:
+
+```bash
+npm run whichwaf -- https://example.com
 ```
 
 ## Usage
