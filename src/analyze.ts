@@ -34,7 +34,7 @@ export interface Analysis {
 const LAYER_BY_KIND: Record<ChallengeKind, { layer: Layer; hint: string }> = {
   cloudflare: {
     layer: 'browser',
-    hint: 'Managed/JS challenge. Check TLS fingerprint coherence first, then expect a JS turnstile-style check. A solved cf_clearance rides in cookies.',
+    hint: 'The JS challenge fires at the browser layer, but Cloudflare scores TLS/JA3 (transport) before the page even renders — fix fingerprint coherence first. A solved cf_clearance rides in cookies.',
   },
   datadome: {
     layer: 'behavior',

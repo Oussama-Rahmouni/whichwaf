@@ -88,6 +88,10 @@ function printVerdict(a: Analysis, meta?: { url: string; finalUrl: string; statu
     console.log();
     console.log(`${PURPLE}layer:${RESET} ${a.layer}`);
     console.log(`${DIM}${a.hint}${RESET}`);
+    if (meta) {
+      console.log();
+      console.log(`${DIM}next: whichwaf ${meta.url} --diff — does a browser fingerprint change the verdict?${RESET}`);
+    }
   }
 }
 
@@ -98,6 +102,7 @@ function verdictLine(label: string, p: ProbeResult, a: Analysis): void {
       ? `${YELLOW}${BOLD}PRESENT${RESET} — ${a.challenge.kind} not blocking`
       : `${GREEN}${BOLD}CLEAN${RESET}`;
   console.log(`${label}  ${tag} ${DIM}· status ${p.status} · ${p.elapsedMs}ms${RESET}`);
+  if (a.challenge.kind !== 'none') console.log(`${''.padEnd(label.length)}  ${DIM}evidence: ${a.challenge.evidence}${RESET}`);
 }
 
 function printDiff(d: DiffResult): void {

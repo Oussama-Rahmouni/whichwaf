@@ -80,13 +80,15 @@ export function detectChallenge(input: DetectInput): ChallengeSignal {
 
   // ── Cloudflare ────────────────────────────────────────────────────────────
   if (hasHeader(headers, 'cf-ray') || hasHeader(headers, 'cf-mitigated')) {
-    const blocked =
-      status === 403 ||
-      status === 503 ||
-      hasHeader(headers, 'cf-mitigated') ||
-      /challenge-platform|__cf_chl_|cf-browser-verification|Just a moment/i.test(body);
+    const challengeBody = /challenge-platform|__cf_chl_|cf-browser-verification|Just a moment/i.test(body);
+    const blocked = status === 403 || status === 503 || hasHeader(headers, 'cf-mitigated') || challengeBody;
     if (blocked) {
-      return { kind: 'cloudflare', confidence: 'high', source: 'multi', evidence: `cf-ray + status ${status}` };
+      const trigger = hasHeader(headers, 'cf-mitigated')
+        ? 'cf-mitigated header'
+        : challengeBody
+          ? `challenge page (status ${status})`
+          : `status ${status}`;
+      return { kind: 'cloudflare', confidence: 'high', source: 'multi', evidence: `cf-ray + ${trigger}` };
     }
   }
   if (/challenge-platform|__cf_chl_|cf-browser-verification/i.test(body)) {
