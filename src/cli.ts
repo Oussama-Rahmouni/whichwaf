@@ -13,6 +13,8 @@
 import { analyze, type Analysis } from './analyze.js';
 import { probe, type ProbeResult } from './probe.js';
 import { diffProbe, type DiffResult } from './diff.js';
+import { scanUrls, renderMarkdownReport, normalizeUrl, type FleetResult } from './fleet.js';
+import { readFile, writeFile } from 'node:fs/promises';
 import { SIGNATURES } from './vendors.js';
 import type { DetectInput } from './detect.js';
 
@@ -30,6 +32,8 @@ function usage(): never {
 usage:
   whichwaf <url> [--json]     probe a URL and classify the response
   whichwaf <url> --diff       probe as plain client AND as browser, compare verdicts
+  whichwaf --file urls.txt    probe a list of URLs, print an aggregate summary
+                [--report out.md] [--json] [--timeout ms]
   whichwaf --stdin [--json]   classify a raw HTTP response piped to stdin
   whichwaf --list             list every vendor signature
   whichwaf --help             this text
@@ -105,6 +109,29 @@ function printDiff(d: DiffResult): void {
   console.log(`${PURPLE}diff:${RESET} ${d.summary}`);
 }
 
+function printFleetSummary(res: FleetResult): void {
+  const { stats } = res;
+  console.log();
+  console.log(`${BOLD}scanned ${stats.total} urls in ${Math.round(res.elapsedMs / 1000)}s${RESET}`);
+  console.log(
+    `${RED}blocked: ${stats.blocked}${RESET} · ${YELLOW}present: ${stats.present}${RESET} · ${GREEN}clean: ${stats.clean}${RESET} · ${DIM}errors: ${stats.errors}${RESET}`,
+  );
+
+  const vendors = Object.entries(stats.byVendor).sort((a, b) => b[1] - a[1]);
+  if (vendors.length > 0) {
+    console.log();
+    console.log(`${PURPLE}vendors:${RESET}`);
+    for (const [v, n] of vendors.slice(0, 10)) console.log(`  ${v.padEnd(16)} ${n}`);
+  }
+
+  const layers = Object.entries(stats.byLayer).sort((a, b) => b[1] - a[1]);
+  if (layers.length > 0) {
+    console.log();
+    console.log(`${PURPLE}block layers:${RESET}`);
+    for (const [l, n] of layers) console.log(`  ${l.padEnd(16)} ${n}`);
+  }
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args.length === 0 || args.includes('--help') || args.includes('-h')) usage();
@@ -143,6 +170,57 @@ async function main(): Promise<void> {
       printDiff(diff);
     }
     process.exit(anyBlocked ? 2 : 0);
+  }
+
+  const fileIdx = args.indexOf('--file');
+  if (fileIdx !== -1) {
+    const file = args[fileIdx + 1];
+    if (!file || file.startsWith('--')) usage();
+    const reportIdx = args.indexOf('--report');
+    const reportPath = reportIdx !== -1 ? args[reportIdx + 1] : undefined;
+    const timeoutIdx = args.indexOf('--timeout');
+    const timeoutMs = timeoutIdx !== -1 ? parseInt(args[timeoutIdx + 1], 10) : undefined;
+
+    let raw: string;
+    try {
+      raw = await readFile(file, 'utf8');
+    } catch (err) {
+      console.error(`cannot read ${file}: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+    const urls = raw.split('\n').map(normalizeUrl).filter((u): u is string => u !== null);
+    if (urls.length === 0) {
+      console.error(`no urls in ${file}`);
+      process.exit(1);
+    }
+
+    const res = await scanUrls(urls, {
+      timeoutMs,
+      onProgress: json
+        ? undefined
+        : (done, total, row) => {
+            const tag =
+              row.verdict === 'blocked'
+                ? `${RED}BLOCKED ${row.challenge}${RESET}`
+                : row.verdict === 'present'
+                  ? `${YELLOW}present ${row.challenge}${RESET}`
+                  : row.verdict === 'error'
+                    ? `${DIM}error${RESET}`
+                    : `${GREEN}clean${RESET}`;
+            console.error(`${DIM}[${done}/${total}]${RESET} ${row.url} → ${tag}`);
+          },
+    });
+
+    if (reportPath) {
+      await writeFile(reportPath, renderMarkdownReport(res));
+      console.error(`report → ${reportPath}`);
+    }
+    if (json) {
+      console.log(JSON.stringify(res, null, 2));
+    } else {
+      printFleetSummary(res);
+    }
+    process.exit(res.stats.blocked > 0 ? 2 : 0);
   }
 
   let input: DetectInput;

@@ -405,3 +405,54 @@ test('diff: browser blocked but honest clean → behavioral conclusion', () => {
   const browser = analyze(mk({ status: 403, body: '<div class="g-recaptcha"></div>' }));
   assert.match(classifyDiff(honest, browser), /unusual/i);
 });
+
+// ── fleet scan ──────────────────────────────────────────────────────────────
+
+import { computeStats, normalizeUrl, renderMarkdownReport, type FleetRow } from '../src/fleet.js';
+
+test('normalizeUrl: adds scheme, skips blanks and comments', () => {
+  assert.equal(normalizeUrl('example.com'), 'https://example.com');
+  assert.equal(normalizeUrl('http://a.com'), 'http://a.com');
+  assert.equal(normalizeUrl('  '), null);
+  assert.equal(normalizeUrl('# comment'), null);
+});
+
+const row = (over: Partial<FleetRow>): FleetRow => ({
+  url: 'https://x.com',
+  status: 200,
+  verdict: 'clean',
+  challenge: 'none',
+  layer: 'none',
+  vendors: [],
+  elapsedMs: 100,
+  ...over,
+});
+
+test('computeStats: counts verdicts, vendors, block layers', () => {
+  const stats = computeStats([
+    row({ verdict: 'blocked', challenge: 'cloudflare', layer: 'browser', vendors: ['cloudflare'] }),
+    row({ verdict: 'blocked', challenge: 'datadome', layer: 'behavior', vendors: ['datadome'] }),
+    row({ verdict: 'clean', vendors: ['cloudflare'] }),
+    row({ verdict: 'error', status: null, error: 'timeout' }),
+  ]);
+  assert.equal(stats.total, 4);
+  assert.equal(stats.blocked, 2);
+  assert.equal(stats.clean, 1);
+  assert.equal(stats.errors, 1);
+  assert.equal(stats.byVendor['cloudflare'], 2);
+  assert.equal(stats.byLayer['browser'], 1);
+  assert.equal(stats.byLayer['behavior'], 1);
+});
+
+test('renderMarkdownReport: summary, vendor table, details table', () => {
+  const res = {
+    rows: [row({ verdict: 'blocked', challenge: 'cloudflare', layer: 'browser', vendors: ['cloudflare'] })],
+    stats: computeStats([row({ verdict: 'blocked', challenge: 'cloudflare', layer: 'browser', vendors: ['cloudflare'] })]),
+    elapsedMs: 500,
+  };
+  const md = renderMarkdownReport(res);
+  assert.match(md, /# whichwaf fleet report/);
+  assert.match(md, /\*\*blocked:\*\* 1 \(100%\)/);
+  assert.match(md, /\| cloudflare \| 1 \|/);
+  assert.match(md, /\| https:\/\/x\.com \| 200 \| blocked \| cloudflare \|/);
+});

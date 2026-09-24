@@ -17,3 +17,6 @@ export type { ProbeResult, ProbeProfile } from './probe.js';
 
 export { diffProbe, classifyDiff } from './diff.js';
 export type { DiffResult } from './diff.js';
+
+export { scanUrls, computeStats, normalizeUrl, renderMarkdownReport } from './fleet.js';
+export type { FleetResult, FleetRow, FleetStats } from './fleet.js';
