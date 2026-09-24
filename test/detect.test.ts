@@ -225,6 +225,67 @@ test('vendors: nothing on a plain nginx response', () => {
   assert.equal(hits.length, 0);
 });
 
+// ── extended vendor fingerprints ────────────────────────────────────────────
+
+test('vendors: sucuri via x-sucuri-id header', () => {
+  const hits = fingerprintVendors({ headers: { 'x-sucuri-id': '12345' }, body: '<html>ok</html>' });
+  assert.ok(hits.some((h) => h.name === 'sucuri'));
+});
+
+test('vendors: wordfence via authcookie', () => {
+  const hits = fingerprintVendors({
+    headers: { 'set-cookie': 'wfwaf-authcookie-abc=xyz; Path=/' },
+    body: '<html>ok</html>',
+  });
+  assert.ok(hits.some((h) => h.name === 'wordfence'));
+});
+
+test('vendors: ddos-guard via server header and __ddg cookie', () => {
+  const hits = fingerprintVendors({
+    headers: { server: 'ddos-guard', 'set-cookie': '__ddgid_=abc; Path=/' },
+    body: '<html>ok</html>',
+  });
+  const ddg = hits.find((h) => h.name === 'ddosguard');
+  assert.ok(ddg);
+  assert.ok(ddg.evidence.length >= 2);
+});
+
+test('vendors: radware via reese84 cookie', () => {
+  const hits = fingerprintVendors({
+    headers: { 'set-cookie': 'reese84=abc; Path=/' },
+    body: '<html>ok</html>',
+  });
+  assert.ok(hits.some((h) => h.name === 'radware'));
+});
+
+test('vendors: queue-it via waiting-room marker', () => {
+  const hits = fingerprintVendors({ headers: {}, body: '<script src="https://assets.queue-it.net/queue.js"></script>' });
+  assert.ok(hits.some((h) => h.name === 'queueit'));
+});
+
+test('vendors: azure front door via x-azure-ref', () => {
+  const hits = fingerprintVendors({ headers: { 'x-azure-ref': '0abc123' }, body: '<html>ok</html>' });
+  assert.ok(hits.some((h) => h.name === 'azure'));
+});
+
+test('vendors: f5 big-ip via cookie and rejection page', () => {
+  const hits = fingerprintVendors({
+    headers: { 'set-cookie': 'BIGipServerpool=123; Path=/' },
+    body: 'The requested URL was rejected. Please consult with your administrator. Support ID: 999',
+  });
+  assert.ok(hits.some((h) => h.name === 'f5bigip'));
+});
+
+test('vendors: alibaba edge via eagleid', () => {
+  const hits = fingerprintVendors({ headers: { eagleid: 'abc123', server: 'Tengine' }, body: '<html>ok</html>' });
+  assert.ok(hits.some((h) => h.name === 'alibaba'));
+});
+
+test('vendors: geetest via widget script', () => {
+  const hits = fingerprintVendors({ headers: {}, body: '<script src="https://api.geetest.com/gettype.php"></script>' });
+  assert.ok(hits.some((h) => h.name === 'geetest'));
+});
+
 // ── analyze() verdict shape ─────────────────────────────────────────────────
 
 test('analyze: blocked cloudflare response → blocked=true, layer=browser', () => {
