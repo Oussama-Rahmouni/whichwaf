@@ -13,4 +13,7 @@ export { analyze } from './analyze.js';
 export type { Analysis, Layer } from './analyze.js';
 
 export { probe } from './probe.js';
-export type { ProbeResult } from './probe.js';
+export type { ProbeResult, ProbeProfile } from './probe.js';
+
+export { diffProbe, classifyDiff } from './diff.js';
+export type { DiffResult } from './diff.js';

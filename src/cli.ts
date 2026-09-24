@@ -11,7 +11,8 @@
  */
 
 import { analyze, type Analysis } from './analyze.js';
-import { probe } from './probe.js';
+import { probe, type ProbeResult } from './probe.js';
+import { diffProbe, type DiffResult } from './diff.js';
 import { SIGNATURES } from './vendors.js';
 import type { DetectInput } from './detect.js';
 
@@ -28,6 +29,7 @@ function usage(): never {
 
 usage:
   whichwaf <url> [--json]     probe a URL and classify the response
+  whichwaf <url> --diff       probe as plain client AND as browser, compare verdicts
   whichwaf --stdin [--json]   classify a raw HTTP response piped to stdin
   whichwaf --list             list every vendor signature
   whichwaf --help             this text
@@ -85,6 +87,24 @@ function printVerdict(a: Analysis, meta?: { url: string; finalUrl: string; statu
   }
 }
 
+function verdictLine(label: string, p: ProbeResult, a: Analysis): void {
+  const tag = a.blocked
+    ? `${RED}${BOLD}BLOCKED${RESET} — ${BOLD}${a.challenge.kind}${RESET} (${a.challenge.confidence})`
+    : a.challenge.kind !== 'none'
+      ? `${YELLOW}${BOLD}PRESENT${RESET} — ${a.challenge.kind} not blocking`
+      : `${GREEN}${BOLD}CLEAN${RESET}`;
+  console.log(`${label}  ${tag} ${DIM}· status ${p.status} · ${p.elapsedMs}ms${RESET}`);
+}
+
+function printDiff(d: DiffResult): void {
+  console.log(`${DIM}${d.url}${RESET}`);
+  console.log();
+  verdictLine('honest  (whichwaf UA):', d.honest.probe, d.honest.verdict);
+  verdictLine('browser (chrome UA):  ', d.browser.probe, d.browser.verdict);
+  console.log();
+  console.log(`${PURPLE}diff:${RESET} ${d.summary}`);
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args.length === 0 || args.includes('--help') || args.includes('-h')) usage();
@@ -97,6 +117,33 @@ async function main(): Promise<void> {
   }
 
   const json = args.includes('--json');
+
+  if (args.includes('--diff')) {
+    const url = args.find((a) => !a.startsWith('--'));
+    if (!url) usage();
+    let diff: DiffResult;
+    try {
+      diff = await diffProbe(url);
+    } catch (err) {
+      console.error(`probe failed: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+    const anyBlocked = diff.honest.verdict.blocked || diff.browser.verdict.blocked;
+    if (json) {
+      const slim = (side: DiffResult['honest']) => ({
+        status: side.probe.status,
+        finalUrl: side.probe.finalUrl,
+        elapsedMs: side.probe.elapsedMs,
+        verdict: side.verdict,
+      });
+      console.log(
+        JSON.stringify({ url: diff.url, honest: slim(diff.honest), browser: slim(diff.browser), summary: diff.summary }, null, 2),
+      );
+    } else {
+      printDiff(diff);
+    }
+    process.exit(anyBlocked ? 2 : 0);
+  }
 
   let input: DetectInput;
   let meta: { url: string; finalUrl: string; status: number; elapsedMs: number } | undefined;

@@ -376,3 +376,32 @@ test('analyze: clean 200 behind cloudflare → blocked=false but vendor listed',
   assert.equal(a.blocked, false);
   assert.ok(a.vendors.some((v) => v.name === 'cloudflare'));
 });
+
+// ── differential probing ────────────────────────────────────────────────────
+
+import { classifyDiff } from '../src/diff.js';
+
+test('diff: honest blocked + browser clean → identity/transport conclusion', () => {
+  const honest = analyze(mk({ status: 403, headers: { 'cf-ray': '8abc-FRA' } }));
+  const browser = analyze(mk({ status: 200, headers: { 'cf-ray': '8abc-FRA', server: 'cloudflare' } }));
+  const s = classifyDiff(honest, browser);
+  assert.match(s, /identity\/transport/);
+});
+
+test('diff: both blocked by same vendor → challenge itself must be solved', () => {
+  const honest = analyze(mk({ status: 403, headers: { 'cf-ray': '8abc-FRA' } }));
+  const browser = analyze(mk({ status: 403, headers: { 'cf-ray': '9def-LHR' } }));
+  const s = classifyDiff(honest, browser);
+  assert.match(s, /regardless of client identity/);
+});
+
+test('diff: both clean → volume/behavior conclusion', () => {
+  const clean = analyze(mk({}));
+  assert.match(classifyDiff(clean, clean), /No block for either profile/);
+});
+
+test('diff: browser blocked but honest clean → behavioral conclusion', () => {
+  const honest = analyze(mk({}));
+  const browser = analyze(mk({ status: 403, body: '<div class="g-recaptcha"></div>' }));
+  assert.match(classifyDiff(honest, browser), /unusual/i);
+});
