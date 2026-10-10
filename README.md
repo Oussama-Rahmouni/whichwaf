@@ -38,7 +38,13 @@ Two design rules set it apart:
 
 ## Install
 
-Not on npm yet — install from source:
+[![npm](https://img.shields.io/npm/v/whichwaf)](https://www.npmjs.com/package/whichwaf)
+
+```bash
+npm i -g whichwaf
+```
+
+Or from source:
 
 ```bash
 git clone https://github.com/Oussama-Rahmouni/whichwaf.git
