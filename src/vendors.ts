@@ -59,7 +59,7 @@ export const SIGNATURES: VendorSignature[] = [
     kind: 'bot-manager',
     headers: ['x-px-original-token'],
     cookies: ['_pxhd', '_pxff_ts'],
-    bodyPatterns: [/perimeterx/i, /px-captcha/i, /_px[A-Z0-9]/i, /px-client/i],
+    bodyPatterns: [/px-cdn\.net/i, /px-captcha/i, /_px[A-Z0-9]/i, /px-client/i],
     note: 'Now HUMAN. Sensor JS + behavioral model. Mobile SDK common on app APIs.',
   },
   {

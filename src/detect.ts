@@ -110,8 +110,15 @@ export function detectChallenge(input: DetectInput): ChallengeSignal {
   }
 
   // ── PerimeterX / HUMAN ────────────────────────────────────────────────────
-  if (hasHeader(headers, 'x-px-original-token') || /perimeterx|px-captcha|_px[A-Z0-9]/i.test(body)) {
-    return { kind: 'perimeterx', confidence: 'high', source: 'multi', evidence: 'perimeterx/px marker' };
+  // The word "perimeterx" appears in prose (articles about anti-bot) — never a
+  // block signal by itself. A block is a challenge artifact (px-captcha element,
+  // _px* script vars, px-cdn.net) on a block status, or the challenge header.
+  const pxArtifact = /px-captcha|_px[A-Z0-9]|px-cdn\.net/i.test(body);
+  if (hasHeader(headers, 'x-px-original-token') || (pxArtifact && status >= 400)) {
+    return { kind: 'perimeterx', confidence: 'high', source: 'multi', evidence: `px challenge marker + status ${status}` };
+  }
+  if (pxArtifact) {
+    return { kind: 'perimeterx', confidence: 'low', source: 'body', evidence: 'perimeterx present (not blocking)' };
   }
 
   // ── Akamai (Bot Manager) ──────────────────────────────────────────────────

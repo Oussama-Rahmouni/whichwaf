@@ -78,6 +78,21 @@ test('datadome: x-datadome header + 403 → block (high)', () => {
 test('perimeterx: px-captcha marker → high', () => {
   const s = detectChallenge(mk({ status: 403, body: '<div id="px-captcha"></div>' }));
   assert.equal(s.kind, 'perimeterx');
+  assert.equal(s.confidence, 'high');
+});
+
+test('perimeterx: prose mention on a 200 is NOT a block', () => {
+  const s = detectChallenge(mk({
+    status: 200,
+    body: '<article><h1>How PerimeterX sensor JS works</h1><p>PerimeterX, now HUMAN…</p></article>',
+  }));
+  assert.equal(s.kind, 'none');
+});
+
+test('perimeterx: px-captcha on a 200 is PRESENCE (low), not a block', () => {
+  const s = detectChallenge(mk({ status: 200, body: '<div id="px-captcha"></div>' }));
+  assert.equal(s.kind, 'perimeterx');
+  assert.equal(s.confidence, 'low');
 });
 
 // ── akamai ──────────────────────────────────────────────────────────────────
