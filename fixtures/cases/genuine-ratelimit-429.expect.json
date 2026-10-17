@@ -1,0 +1,1 @@
+{"kind":"ratelimit","blocked":true,"layer":"behavior","note":"Genuine rate limiter: Retry-After + X-RateLimit-* present. Throttle cadence, don't touch fingerprints."}

@@ -1,0 +1,5 @@
+HTTP/2 200
+content-type: text/html; charset=utf-8
+cache-control: public, max-age=60
+
+<!DOCTYPE html><html><head><title>Auto marketplace</title></head><body><h1>Cars for sale</h1><div class="listing">…</div></body></html>

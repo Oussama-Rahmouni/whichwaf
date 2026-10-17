@@ -1,6 +1,6 @@
 {
   "name": "whichwaf",
-  "version": "0.2.1",
+  "version": "0.4.0",
   "description": "Which anti-bot/WAF is protecting this site — and which layer blocks you. Evidence-based detection for Cloudflare, DataDome, PerimeterX, Akamai, Kasada, Imperva, AWS WAF, Turnstile, reCAPTCHA, hCaptcha, funcaptcha.",
   "keywords": [
     "waf",
@@ -36,7 +36,9 @@
   },
   "files": [
     "dist",
+    "fixtures",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "engines": {

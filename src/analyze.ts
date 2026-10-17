@@ -36,6 +36,10 @@ const LAYER_BY_KIND: Record<ChallengeKind, { layer: Layer; hint: string }> = {
     layer: 'browser',
     hint: 'The JS challenge fires at the browser layer, but Cloudflare scores TLS/JA3 (transport) before the page even renders — fix fingerprint coherence first. A solved cf_clearance rides in cookies.',
   },
+  vercel: {
+    layer: 'browser',
+    hint: 'Vercel Security Checkpoint — a JS proof-of-work, not a rate limit. A real browser can execute it; transport changes alone are not a proven fix. Use --diff to measure whether TLS also discriminates.',
+  },
   datadome: {
     layer: 'behavior',
     hint: 'Behavioral + device fingerprint. Session continuity (same cookies, same fingerprint, human cadence) beats volume.',
@@ -119,6 +123,14 @@ const LAYER_BY_KIND: Record<ChallengeKind, { layer: Layer; hint: string }> = {
   'captcha-generic': {
     layer: 'application',
     hint: 'Unidentified CAPTCHA. Capture the full response and identify the widget source manually.',
+  },
+  ratelimit: {
+    layer: 'behavior',
+    hint: 'Genuine rate limiting (Retry-After / X-RateLimit-* present). Throttle cadence and spread load — fingerprint changes won\'t help.',
+  },
+  'unknown-gate': {
+    layer: 'transport',
+    hint: 'Anomalous denial with no vendor markers — typically TLS/JA3/JA4 + HTTP/2 fingerprint rejection, IP reputation, or a custom edge function. Confirm with `whichwaf <url> --diff` (uses a real browser TLS fingerprint when curl-impersonate is installed) before spending on solvers.',
   },
   none: { layer: 'none', hint: 'No active block detected in this response.' },
 };

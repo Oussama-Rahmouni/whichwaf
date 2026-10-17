@@ -203,9 +203,10 @@ export const SIGNATURES: VendorSignature[] = [
   {
     name: 'vercel',
     kind: 'cdn',
-    headers: ['x-vercel-id', 'x-vercel-cache'],
+    headers: ['x-vercel-id', 'x-vercel-cache', 'x-vercel-mitigated'],
     headerValues: [['server', /^Vercel$/i]],
-    note: 'Vercel edge. Built-in bot protection is opt-in; check for challenge behavior.',
+    bodyPatterns: [/vercel security checkpoint/i],
+    note: 'Vercel edge. Opt-in bot protection = Security Checkpoint (JS proof-of-work, commonly x-vercel-mitigated: challenge); use differential probing before inferring a transport gate.',
   },
   {
     name: 'bunnycdn',

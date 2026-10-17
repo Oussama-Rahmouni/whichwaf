@@ -11,8 +11,10 @@
  */
 
 import { analyze, type Analysis } from './analyze.js';
-import { probe, type ProbeResult } from './probe.js';
+import { probe, probeWithSession, probeRepeat, type ProbeResult } from './probe.js';
 import { diffProbe, type DiffResult } from './diff.js';
+import { classifySession, summarizeSequence } from './rounds.js';
+import { parseRawResponse } from './raw.js';
 import { scanUrls, renderMarkdownReport, normalizeUrl, type FleetResult } from './fleet.js';
 import { readFile, writeFile } from 'node:fs/promises';
 import { SIGNATURES } from './vendors.js';
@@ -32,6 +34,9 @@ function usage(): never {
 usage:
   whichwaf <url> [--json]     probe a URL and classify the response
   whichwaf <url> --diff       probe as plain client AND as browser, compare verdicts
+                              (+ real browser TLS via curl-impersonate when installed)
+  whichwaf <url> --session    probe twice: without cookies, then honoring set-cookie
+  whichwaf <url> --probe N    probe N times [--delay ms], find the volume threshold
   whichwaf --file urls.txt    probe a list of URLs, print an aggregate summary
                 [--report out.md] [--json] [--timeout ms]
   whichwaf --stdin [--json]   classify a raw HTTP response piped to stdin
@@ -40,21 +45,6 @@ usage:
 
 exit codes: 0 = clean · 2 = block/challenge detected · 1 = error`);
   process.exit(0);
-}
-
-/** Parse a raw HTTP response dump: status line, headers, blank line, body. */
-function parseRawResponse(raw: string): DetectInput {
-  const sep = raw.indexOf('\r\n\r\n') !== -1 ? '\r\n\r\n' : '\n\n';
-  const [head, ...rest] = raw.split(sep);
-  const body = rest.join(sep);
-  const lines = head.split(/\r?\n/);
-  const statusMatch = lines[0].match(/^HTTP\/[\d.]+\s+(\d+)/);
-  const headers: Record<string, string> = {};
-  for (const line of lines.slice(1)) {
-    const i = line.indexOf(':');
-    if (i > 0) headers[line.slice(0, i).trim().toLowerCase()] = line.slice(i + 1).trim();
-  }
-  return { status: statusMatch ? parseInt(statusMatch[1], 10) : 0, headers, body };
 }
 
 function printVerdict(a: Analysis, meta?: { url: string; finalUrl: string; status: number; elapsedMs: number }): void {
@@ -110,6 +100,13 @@ function printDiff(d: DiffResult): void {
   console.log();
   verdictLine('honest  (whichwaf UA):', d.honest.probe, d.honest.verdict);
   verdictLine('browser (chrome UA):  ', d.browser.probe, d.browser.verdict);
+  if (d.impersonated) {
+    verdictLine('tls     (impersonated):', d.impersonated.probe, d.impersonated.verdict);
+  } else {
+    console.log(
+      `${DIM}tls     (impersonated): skipped — no curl-impersonate binary on PATH (install curl-impersonate, or set WHICHWAF_CURL_IMPERSONATE)${RESET}`,
+    );
+  }
   console.log();
   console.log(`${PURPLE}diff:${RESET} ${d.summary}`);
 }
@@ -150,6 +147,95 @@ async function main(): Promise<void> {
 
   const json = args.includes('--json');
 
+  // ── --session: does honoring set-cookie lift the gate? ────────────────────
+  if (args.includes('--session')) {
+    const url = args.find((a) => !a.startsWith('--'));
+    if (!url) usage();
+    try {
+      const s = await probeWithSession(url);
+      const verdictOf = (p: ProbeResult) =>
+        analyze({
+          status: p.status,
+          headers: p.headers,
+          body: p.body,
+          url: p.finalUrl,
+          redirectChain: p.redirectChain,
+          elapsedMs: p.elapsedMs,
+        });
+      const first = verdictOf(s.first);
+      const second = s.second ? verdictOf(s.second) : null;
+      const conclusion = classifySession(first, second, s.cookieLoop);
+
+      if (json) {
+        console.log(
+          JSON.stringify(
+            {
+              url,
+              first: { status: s.first.status, verdict: first },
+              second: s.second ? { status: s.second.status, verdict: second } : null,
+              cookieLoop: s.cookieLoop,
+              summary: conclusion,
+            },
+            null,
+            2,
+          ),
+        );
+      } else {
+        console.log(`${DIM}${url}${RESET}`);
+        console.log();
+        verdictLine('request 1 (no cookies):  ', s.first, first);
+        if (s.second && second) verdictLine('request 2 (with cookies):', s.second, second);
+        else console.log(`${DIM}request 2 skipped — response set no cookies${RESET}`);
+        console.log();
+        console.log(`${PURPLE}session:${RESET} ${conclusion}`);
+      }
+      const stillBlocked = second ? second.blocked : first.blocked;
+      process.exit(stillBlocked ? 2 : 0);
+    } catch (err) {
+      console.error(`probe failed: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  }
+
+  // ── --probe N: find the volume threshold ──────────────────────────────────
+  const probeIdx = args.indexOf('--probe');
+  if (probeIdx !== -1) {
+    const url = args.find((a, i) => !a.startsWith('--') && i !== probeIdx + 1);
+    const count = parseInt(args[probeIdx + 1] ?? '', 10);
+    if (!url || !Number.isFinite(count) || count < 2) usage();
+    const delayIdx = args.indexOf('--delay');
+    const delayMs = delayIdx !== -1 ? parseInt(args[delayIdx + 1], 10) : undefined;
+    try {
+      const results = await probeRepeat(url, { count, delayMs });
+      const seq = results.map((p) => {
+        const v = analyze({ status: p.status, headers: p.headers, body: p.body, url: p.finalUrl, elapsedMs: p.elapsedMs });
+        return { status: p.status, blocked: v.blocked, kind: v.challenge.kind, elapsedMs: p.elapsedMs };
+      });
+      const summary = summarizeSequence(seq);
+
+      if (json) {
+        console.log(JSON.stringify({ url, count, delayMs: delayMs ?? 300, sequence: seq, summary }, null, 2));
+      } else {
+        console.log(`${DIM}${url}${RESET}`);
+        console.log();
+        console.log(
+          seq
+            .map((e, i) => {
+              const tag = e.blocked ? `${RED}${e.status}·${e.kind}${RESET}` : `${GREEN}${e.status}${RESET}`;
+              return `${DIM}${i + 1}:${RESET}${tag}`;
+            })
+            .join('  '),
+        );
+        console.log();
+        console.log(`${PURPLE}sequence:${RESET} ${summary}`);
+      }
+      process.exit(seq.some((e) => e.blocked) ? 2 : 0);
+    } catch (err) {
+      console.error(`probe failed: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  }
+
   if (args.includes('--diff')) {
     const url = args.find((a) => !a.startsWith('--'));
     if (!url) usage();
@@ -160,16 +246,28 @@ async function main(): Promise<void> {
       console.error(`probe failed: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);
     }
-    const anyBlocked = diff.honest.verdict.blocked || diff.browser.verdict.blocked;
+    const anyBlocked =
+      diff.honest.verdict.blocked || diff.browser.verdict.blocked || (diff.impersonated?.verdict.blocked ?? false);
     if (json) {
       const slim = (side: DiffResult['honest']) => ({
         status: side.probe.status,
         finalUrl: side.probe.finalUrl,
+        redirectChain: side.probe.redirectChain,
         elapsedMs: side.probe.elapsedMs,
         verdict: side.verdict,
       });
       console.log(
-        JSON.stringify({ url: diff.url, honest: slim(diff.honest), browser: slim(diff.browser), summary: diff.summary }, null, 2),
+        JSON.stringify(
+          {
+            url: diff.url,
+            honest: slim(diff.honest),
+            browser: slim(diff.browser),
+            impersonated: diff.impersonated ? { ...slim(diff.impersonated), binary: diff.impersonated.binary } : null,
+            summary: diff.summary,
+          },
+          null,
+          2,
+        ),
       );
     } else {
       printDiff(diff);
@@ -240,7 +338,14 @@ async function main(): Promise<void> {
     if (!url) usage();
     try {
       const result = await probe(url);
-      input = { status: result.status, headers: result.headers, body: result.body, url: result.finalUrl };
+      input = {
+        status: result.status,
+        headers: result.headers,
+        body: result.body,
+        url: result.finalUrl,
+        redirectChain: result.redirectChain,
+        elapsedMs: result.elapsedMs,
+      };
       meta = { url: result.url, finalUrl: result.finalUrl, status: result.status, elapsedMs: result.elapsedMs };
     } catch (err) {
       console.error(`probe failed: ${err instanceof Error ? err.message : String(err)}`);

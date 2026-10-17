@@ -66,7 +66,7 @@ export function computeStats(rows: FleetRow[]): FleetStats {
 async function probeOne(url: string, timeoutMs?: number): Promise<FleetRow> {
   try {
     const p = await probe(url, { timeoutMs });
-    const v = analyze({ status: p.status, headers: p.headers, body: p.body, url: p.finalUrl });
+    const v = analyze({ status: p.status, headers: p.headers, body: p.body, url: p.finalUrl, redirectChain: p.redirectChain, elapsedMs: p.elapsedMs });
     return {
       url,
       status: p.status,

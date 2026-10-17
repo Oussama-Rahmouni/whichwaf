@@ -1,0 +1,1 @@
+{"kind":"unknown-gate","blocked":true,"layer":"transport","note":"CloudFront edge error page: request rejected at the edge, never reached origin (WAF custom response / geo / fingerprint gate)."}
